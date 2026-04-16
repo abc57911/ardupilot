@@ -805,7 +805,12 @@ local function Client(sock, idx)
       if not startswith(relpath, "/") then
          relpath = "/" .. relpath
       end
-      local location = string.format("http://%s%s", header_vars['Host'], relpath)
+      local host = header_vars['Host']
+      if not host or not string.match(host, "^[%w%.%-]+[:%d]*$") then
+         self.not_found()
+         return
+      end
+      local location = string.format("http://%s%s", host, relpath)
       DEBUG(string.format("%u: Redirect -> %s", idx, location))
       self.send_header(301, "Moved Permanently", {["Location"]=location})
    end
@@ -832,6 +837,14 @@ local function Client(sock, idx)
          return
       end
       local path = cmd[2]
+
+      -- reject path traversal attempts
+      if string.find(path, "%.%.") then
+         DEBUG(string.format("%u: rejected path traversal: %s", idx, path))
+         self.not_found()
+         return
+      end
+
       DEBUG(string.format("%u: path='%s'", idx, path))
 
       -- extract header variables
