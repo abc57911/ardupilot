@@ -97,8 +97,8 @@ if __name__ == '__main__':
         shutil.copyfile(docs, docs_copy)
 
     # Run check, print output in real time for user and capture so we can confirm it has found at least one file
-    command = "%s --configpath %s --logpath %s --check %s" % (run_path, setup, logs, check_path)
-    p = subprocess.Popen(command, shell=True, text=True, stdout=subprocess.PIPE)
+    p = subprocess.Popen([str(run_path), "--configpath", str(setup), "--logpath", str(logs), "--check", str(check_path)],
+                         text=True, stdout=subprocess.PIPE)
     result = []
     while p.poll() is None:
         line = p.stdout.readline()

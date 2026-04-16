@@ -223,10 +223,17 @@ if __name__ == '__main__':
     if dump_file is not None:
         print(crashdebug_exe)
         print("Processing Crash Dump.\n")
-        process_cmd = "arm-none-eabi-gdb -nx --batch --quiet " + args.elf_file + "  -ex \"set target-charset ASCII\" -ex \"target remote | " + crashdebug_exe + " --elf " + args.elf_file + " --dump " + dump_file + "\" -ex \"set print pretty on\" -ex \"bt full\" -ex \"quit\""
-        print(process_cmd)
+        process_cmd = [
+            "arm-none-eabi-gdb", "-nx", "--batch", "--quiet", args.elf_file,
+            "-ex", "set target-charset ASCII",
+            "-ex", "target remote | %s --elf %s --dump %s" % (crashdebug_exe, args.elf_file, dump_file),
+            "-ex", "set print pretty on",
+            "-ex", "bt full",
+            "-ex", "quit",
+        ]
+        print(" ".join(process_cmd))
         # We can call GDB and CrashDebug using the command and print the results
-        process = subprocess.Popen(process_cmd, shell=True, stdout=subprocess.PIPE)
+        process = subprocess.Popen(process_cmd, stdout=subprocess.PIPE)
         output, error = process.communicate()
 
         print(output.decode("utf-8"))
