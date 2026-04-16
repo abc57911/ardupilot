@@ -13,7 +13,7 @@ class EDNEmit(Emit):
     def __init__(self, *args, **kwargs):
         Emit.__init__(self, *args, **kwargs)
         self.output = "{:date " + edn_format.dumps(datetime.datetime.now(pytz.utc)) + " "
-        git = subprocess.Popen(["git log --pretty=format:'%h'  -n 1"], shell=True, stdout=subprocess.PIPE).communicate()[0]
+        git = subprocess.Popen(["git", "log", "--pretty=format:%h", "-n", "1"], stdout=subprocess.PIPE).communicate()[0]
         self.output += ":git-hash \"" + git.decode("ascii") + "\" "
         self.remove_keys = ["real_path"]
         self.explict_remap = [["displayname", "display-name"]]

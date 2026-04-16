@@ -298,7 +298,11 @@ class upload_fw_blueos(Task.Task):
         files = {
           'binary': open(binary_path, 'rb')
         }
-        response = requests.post(url, files=files, verify=False)
+        try:
+            response = requests.post(url, files=files)
+        except requests.exceptions.SSLError:
+            print("WARNING: SSL certificate verification failed for %s, uploading without verification" % url)
+            response = requests.post(url, files=files, verify=False)
         if response.status_code != 200:
             raise Errors.WafError(f"Failed to upload firmware to BlueOS: {response.status_code}: {response.text}")
         print("Upload complete")
