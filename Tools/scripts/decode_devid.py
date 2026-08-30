@@ -24,6 +24,7 @@ parser.add_option("-C", "--compass", action='store_true', help='decode compass I
 parser.add_option("-I", "--imu", action='store_true', help='decode IMU IDs')
 parser.add_option("-B", "--baro", action='store_true', help='decode barometer IDs')
 parser.add_option("-A", "--airspeed", action='store_true', help='decode airspeed IDs')
+parser.add_option("-M", "--mavlink", action='store_true', help='decode MAVLink channel IDs')
 
 opts, args = parser.parse_args()
 
@@ -45,6 +46,7 @@ bustypes = {
     4: "SITL",
     5: "MSP",
     6: "SERIAL",
+    7: "WSPI",
 }
 
 compass_types = {
@@ -71,7 +73,7 @@ compass_types = {
     0x16 : "DEVTYPE_QMC5883P",
     0x17 : "DEVTYPE_BMM350",
     0x18 : "DEVTYPE_IIS2MDC",
-    0x19 : "DEVTYPE_LIS2MDL",
+    0x19 : "DEVTYPE_LIS2MDL",  # unused except on pre-release firmware
 }
 
 imu_types = {
@@ -110,6 +112,11 @@ imu_types = {
     0x3B : "DEVTYPE_INS_ICM45686",
     0x3C : "DEVTYPE_INS_SCHA63T",
     0x3D : "DEVTYPE_INS_IIM42653",
+    0x3E : "DEVTYPE_INS_LSM6DSV16X",
+    0x3F : "DEVTYPE_INS_ASM330",
+    0x40 : "DEVTYPE_INS_ADIS16607",
+    0x42 : "DEVTYPE_INS_LSM6DSV32X",
+    0x43 : "DEVTYPE_INS_LSM6DSK320X",
 }
 
 baro_types = {
@@ -151,6 +158,14 @@ airspeed_types = {
     0x09 : "DEVTYPE_AIRSPEED_NMEA",
     0x0A : "DEVTYPE_AIRSPEED_ASP5033",
     0x0B : "DEVTYPE_AIRSPEED_AUAV",
+    0x0C : "DEVTYPE_AIRSPEED_SCRIPTING",
+}
+
+mavlink_types = {
+    0x01 : "DEVTYPE_MAVLINK_UART",
+    0x02 : "DEVTYPE_MAVLINK_NETWORKING",
+    0x03 : "DEVTYPE_MAVLINK_CAN",
+    0x04 : "DEVTYPE_MAVLINK_SCRIPTING",
 }
 
 decoded_devname = ""
@@ -166,7 +181,10 @@ if opts.baro:
 
 if opts.airspeed:
     decoded_devname = airspeed_types.get(devtype, "UNKNOWN")
-    
+
+if opts.mavlink:
+    decoded_devname = mavlink_types.get(devtype, "UNKNOWN")
+
 if bus_type == 3:
     #dronecan devtype represents sensor_id
     print("bus_type:%s(%u)  bus:%u address:%u(0x%x) sensor_id:%u(0x%x) %s" % (

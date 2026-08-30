@@ -1,6 +1,8 @@
 // this file is inserted (by chibios_hwdef.py) into hwdef.h when
 // configuring for AP_Periph builds
 
+#define AP_REBOOT_MASS_STORAGE_ENABLED 0
+
 #ifndef AP_SCHEDULER_ENABLED
 #define AP_SCHEDULER_ENABLED 0
 #endif
@@ -98,6 +100,10 @@
 
 #ifndef HAL_BARO_WIND_COMP_ENABLED
 #define HAL_BARO_WIND_COMP_ENABLED 0
+#endif
+
+#ifndef AP_BARO_CALIBRATION_ENABLED
+#define AP_BARO_CALIBRATION_ENABLED 0
 #endif
 
 #ifndef HAL_UART_STATS_ENABLED

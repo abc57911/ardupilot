@@ -13,6 +13,7 @@ from pymavlink import mavextra
 from pymavlink import mavutil
 
 import vehicle_test_suite
+
 from vehicle_test_suite import NotAchievedException
 
 # get location of scripts
@@ -24,10 +25,6 @@ class AutoTestTracker(vehicle_test_suite.TestSuite):
 
     def log_name(self):
         return "AntennaTracker"
-
-    def default_speedup(self):
-        '''Tracker seems to be race-free'''
-        return 100
 
     def test_filepath(self):
         return os.path.realpath(__file__)
@@ -216,7 +213,7 @@ class AutoTestTracker(vehicle_test_suite.TestSuite):
         self.send_statustext(short_message_text)
         self.send_statustext(long_message_text)
 
-        self.delay_sim_time(10)
+        self.delay_sim_time(10, reason="statustext to be logged")
         dfreader = self.dfreader_for_current_onboard_log()
         self.reboot_sitl()
 
@@ -228,7 +225,7 @@ class AutoTestTracker(vehicle_test_suite.TestSuite):
             if m is None:
                 break
             self.progress(f"{m.Message=}")
-            msg = m.Message.lstrip("SRC=250/250:")
+            msg = m.Message.removeprefix("SRC=250/250:")
             if phase == "short":
                 if msg != short_message_text:
                     continue

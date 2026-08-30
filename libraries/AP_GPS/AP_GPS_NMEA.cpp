@@ -271,6 +271,11 @@ bool AP_GPS_NMEA::_have_new_message()
         if (_last_AGRICA_ms != 0) {
             // we have lost AGRICA
             state.have_gps_yaw = false;
+#if AP_GPS_MB_YAW_OFFSET_ENABLED
+            // the moving baseline offset must not outlive the yaw solution it
+            // was calculated for
+            state.mb_yaw_offset.zero();
+#endif
             state.have_vertical_velocity = false;
             state.have_speed_accuracy = false;
             state.have_horizontal_accuracy = false;
@@ -313,7 +318,7 @@ bool AP_GPS_NMEA::_term_complete()
                     state.ground_speed     = _new_speed*0.01f;
                     state.ground_course    = wrap_360(_new_course*0.01f);
                 }
-                if (state.status >= AP_GPS::GPS_OK_FIX_3D) {
+                if (state.status >= AP_GPS_FixType::FIX_3D) {
                     make_gps_time(_new_date, _new_time * 10);
                     if (_last_AGRICA_ms != 0) {
                         state.time_week_ms = _last_itow_ms;
@@ -337,28 +342,28 @@ bool AP_GPS_NMEA::_term_complete()
                 state.hdop          = _new_hdop;
                 switch(_new_quality_indicator) {
                 case 0: // Fix not available or invalid
-                    state.status = AP_GPS::NO_FIX;
+                    state.status = AP_GPS_FixType::NONE;
                     break;
                 case 1: // GPS SPS Mode, fix valid
-                    state.status = AP_GPS::GPS_OK_FIX_3D;
+                    state.status = AP_GPS_FixType::FIX_3D;
                     break;
                 case 2: // Differential GPS, SPS Mode, fix valid
-                    state.status = AP_GPS::GPS_OK_FIX_3D_DGPS;
+                    state.status = AP_GPS_FixType::DGPS;
                     break;
                 case 3: // GPS PPS Mode, fix valid
-                    state.status = AP_GPS::GPS_OK_FIX_3D;
+                    state.status = AP_GPS_FixType::FIX_3D;
                     break;
                 case 4: // Real Time Kinematic. System used in RTK mode with fixed integers
-                    state.status = AP_GPS::GPS_OK_FIX_3D_RTK_FIXED;
+                    state.status = AP_GPS_FixType::RTK_FIXED;
                     break;
                 case 5: // Float RTK. Satellite system used in RTK mode, floating integers
-                    state.status = AP_GPS::GPS_OK_FIX_3D_RTK_FLOAT;
+                    state.status = AP_GPS_FixType::RTK_FLOAT;
                     break;
                 case 6: // Estimated (dead reckoning) Mode
-                    state.status = AP_GPS::NO_FIX;
+                    state.status = AP_GPS_FixType::NONE;
                     break;
                 default://to maintain compatibility with MAV_GPS_INPUT and others
-                    state.status = AP_GPS::GPS_OK_FIX_3D;
+                    state.status = AP_GPS_FixType::FIX_3D;
                     break;
                 }
                 break;
@@ -389,6 +394,12 @@ bool AP_GPS_NMEA::_term_complete()
                 state.gps_yaw = wrap_360(_new_gps_yaw*0.01f);
                 state.have_gps_yaw = true;
                 state.gps_yaw_time_ms = now;
+#if AP_GPS_MB_YAW_OFFSET_ENABLED
+                // this yaw is the device-reported heading, not one calculated
+                // from a moving baseline offset; clear any stale offset so no
+                // attitude correction is applied to it
+                state.mb_yaw_offset.zero();
+#endif
                 // remember that we are setup to provide yaw. With
                 // a NMEA GPS we can only tell if the GPS is
                 // configured to provide yaw when it first sends a
@@ -447,6 +458,12 @@ bool AP_GPS_NMEA::_term_complete()
                     state.have_gps_yaw = true;
                     state.gps_yaw_time_ms = now;
                     state.gps_yaw_configured = true;
+#if AP_GPS_MB_YAW_OFFSET_ENABLED
+                    // this yaw is the receiver's own heading, not one calculated
+                    // from the configured moving baseline offset; clear any stale
+                    // offset so no attitude correction is applied to it
+                    state.mb_yaw_offset.zero();
+#endif
                 }
                 break;
 #if AP_GPS_NMEA_UNICORE_ENABLED
@@ -493,7 +510,7 @@ bool AP_GPS_NMEA::_term_complete()
                 }
                 const float dist = uh.baseline_length;
                 const float bearing = uh.heading;
-                const float alt_diff = dist*tanf(radians(-uh.pitch));
+                const float alt_diff = dist*sinf(radians(-uh.pitch));
                 state.relPosHeading = bearing;
                 state.relPosLength = dist;
                 state.relPosD = alt_diff;

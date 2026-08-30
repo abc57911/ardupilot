@@ -54,7 +54,7 @@ ModePosHold::ModePosHold() : Mode()
 // convert parameters
 void ModePosHold::convert_params()
 {
-    // PARAMETER_CONVERSION - Added: Feb 2026
+    // PARAMETER_CONVERSION - Added: Feb 2026 ahead of ardupilot-4.7
 
     // return immediately if parameter conversion has already been performed
     if (brake_angle_max_deg.configured()) {
@@ -124,9 +124,6 @@ void ModePosHold::run()
     pos_control->D_set_max_speed_accel_m(get_pilot_speed_dn_ms(), get_pilot_speed_up_ms(), get_pilot_accel_D_mss());
     loiter_nav->clear_pilot_desired_acceleration();
 
-    // apply SIMPLE mode transform to pilot inputs
-    update_simple_mode();
-
     // convert pilot input to lean angles
     float target_roll_rad, target_pitch_rad;
     get_pilot_desired_lean_angles_rad(target_roll_rad, target_pitch_rad, attitude_control->lean_angle_max_rad(), attitude_control->get_althold_lean_angle_max_rad());
@@ -136,7 +133,6 @@ void ModePosHold::run()
 
     // pilot desired climb rate (m/s)
     float target_climb_rate_ms = get_pilot_desired_climb_rate_ms();
-    target_climb_rate_ms = constrain_float(target_climb_rate_ms, -get_pilot_speed_dn_ms(), get_pilot_speed_up_ms());
 
     // relax loiter target if we might be landed
     if (copter.ap.land_complete_maybe) {
@@ -182,7 +178,7 @@ void ModePosHold::run()
     case AltHoldModeState::Takeoff:
         // initiate take-off
         if (!takeoff.running()) {
-            takeoff.start_m(constrain_float(g.pilot_takeoff_alt_cm * 0.01f, 0.0f, 10.0f));
+            takeoff.start_m(constrain_float(g2.pilot_takeoff_alt_m, 0.0f, 10.0f));
         }
 
         // avoidance-adjusted climb
@@ -201,8 +197,6 @@ void ModePosHold::run()
         break;
 
     case AltHoldModeState::Flying:
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
-
         // avoidance-adjusted climb
         target_climb_rate_ms = get_avoidance_adjusted_climbrate_ms(target_climb_rate_ms);
 
@@ -317,7 +311,7 @@ void ModePosHold::run()
             controller_to_pilot_roll_mix = (float)(now_ms - controller_to_pilot_start_time_roll_ms) / (float)POSHOLD_CONTROLLER_TO_PILOT_MIX_TIME_MS;
 
             // mix final loiter lean angle and pilot desired lean angles
-            roll_rad = mix_controls(controller_to_pilot_roll_mix, controller_final_roll_rad, pilot_roll_rad + wind_comp_roll_rad);
+            roll_rad = mix_controls(controller_to_pilot_roll_mix, pilot_roll_rad + wind_comp_roll_rad, controller_final_roll_rad);
             break;
     }
 
@@ -410,7 +404,7 @@ void ModePosHold::run()
             controller_to_pilot_pitch_mix = (float)(now_ms - controller_to_pilot_start_time_pitch_ms) / (float)POSHOLD_CONTROLLER_TO_PILOT_MIX_TIME_MS;
 
             // mix final loiter lean angle and pilot desired lean angles
-            pitch_rad = mix_controls(controller_to_pilot_pitch_mix, controller_final_pitch_rad, pilot_pitch_rad + wind_comp_pitch_rad);
+            pitch_rad = mix_controls(controller_to_pilot_pitch_mix, pilot_pitch_rad + wind_comp_pitch_rad, controller_final_pitch_rad);
             break;
     }
 

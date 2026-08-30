@@ -94,7 +94,7 @@ const char AP_GPS::_initialisation_blob[] =
     ;
 
 #if HAL_GCS_ENABLED
-// ensure that our GPS_Status enumeration is 1:1 with the mavlink
+// ensure that AP_GPS_FixType is 1:1 with the mavlink
 // numbers of the same fix type.  This allows us to do a simple cast
 // from one to the other when sending GPS mavlink messages, rather
 // than having some sort of mapping function from our internal
@@ -104,24 +104,16 @@ const char AP_GPS::_initialisation_blob[] =
 // allows us to build the GPS library without having the mavlink
 // headers built (for example, in AP_Periph we shouldn't need mavlink
 // headers).
-static_assert((uint32_t)AP_GPS::GPS_Status::NO_GPS == (uint32_t)GPS_FIX_TYPE_NO_GPS, "NO_GPS incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::NO_FIX == (uint32_t)GPS_FIX_TYPE_NO_FIX, "NO_FIX incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_2D == (uint32_t)GPS_FIX_TYPE_2D_FIX, "FIX_2D incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D == (uint32_t)GPS_FIX_TYPE_3D_FIX, "FIX_3D incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D_DGPS == (uint32_t)GPS_FIX_TYPE_DGPS, "FIX_DGPS incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D_RTK_FLOAT == (uint32_t)GPS_FIX_TYPE_RTK_FLOAT, "FIX_RTK_FLOAT incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D_RTK_FIXED == (uint32_t)GPS_FIX_TYPE_RTK_FIXED, "FIX_RTK_FIXED incorrect");
+static_assert((uint32_t)AP_GPS_FixType::NO_GPS == (uint32_t)GPS_FIX_TYPE_NO_GPS, "NO_GPS incorrect");
+static_assert((uint32_t)AP_GPS_FixType::NONE == (uint32_t)GPS_FIX_TYPE_NO_FIX, "NO_FIX incorrect");
+static_assert((uint32_t)AP_GPS_FixType::FIX_2D == (uint32_t)GPS_FIX_TYPE_2D_FIX, "FIX_2D incorrect");
+static_assert((uint32_t)AP_GPS_FixType::FIX_3D == (uint32_t)GPS_FIX_TYPE_3D_FIX, "FIX_3D incorrect");
+static_assert((uint32_t)AP_GPS_FixType::DGPS == (uint32_t)GPS_FIX_TYPE_DGPS, "FIX_DGPS incorrect");
+static_assert((uint32_t)AP_GPS_FixType::RTK_FLOAT == (uint32_t)GPS_FIX_TYPE_RTK_FLOAT, "FIX_RTK_FLOAT incorrect");
+static_assert((uint32_t)AP_GPS_FixType::RTK_FIXED == (uint32_t)GPS_FIX_TYPE_RTK_FIXED, "FIX_RTK_FIXED incorrect");
+static_assert((uint32_t)AP_GPS_FixType::STATIC == (uint32_t)GPS_FIX_TYPE_STATIC, "FIX_STATIC incorrect");
+static_assert((uint32_t)AP_GPS_FixType::PPP == (uint32_t)GPS_FIX_TYPE_PPP, "FIX_PPP incorrect");
 #endif
-
-// ensure that our own enum-class status is equivalent to the
-// ArduPilot-scoped AP_GPS_FixType enumeration:
-static_assert((uint32_t)AP_GPS::GPS_Status::NO_GPS == (uint8_t)AP_GPS_FixType::NO_GPS, "NO_GPS incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::NO_FIX == (uint8_t)AP_GPS_FixType::NONE, "NO_FIX incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_2D == (uint8_t)AP_GPS_FixType::FIX_2D, "FIX_2D incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D == (uint8_t)AP_GPS_FixType::FIX_3D, "FIX_3D incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D_DGPS == (uint8_t)AP_GPS_FixType::DGPS, "FIX_DGPS incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D_RTK_FLOAT == (uint8_t)AP_GPS_FixType::RTK_FLOAT, "FIX_RTK_FLOAT incorrect");
-static_assert((uint32_t)AP_GPS::GPS_Status::GPS_OK_FIX_3D_RTK_FIXED == (uint8_t)AP_GPS_FixType::RTK_FIXED, "FIX_RTK_FIXED incorrect");
 
 AP_GPS *AP_GPS::_singleton;
 
@@ -616,7 +608,7 @@ void AP_GPS::detect_instance(uint8_t instance)
 {
     const uint32_t now = AP_HAL::millis();
 
-    state[instance].status = NO_GPS;
+    state[instance].status = AP_GPS_FixType::NO_GPS;
     state[instance].hdop = GPS_UNKNOWN_DOP;
     state[instance].vdop = GPS_UNKNOWN_DOP;
 
@@ -625,7 +617,7 @@ void AP_GPS::detect_instance(uint8_t instance)
         return;
     }
 
-    state[instance].status = NO_FIX;
+    state[instance].status = AP_GPS_FixType::NONE;
     drivers[instance] = new_gps;
     timing[instance].last_message_time_ms = now;
     timing[instance].delta_time_ms = GPS_TIMEOUT_MS;
@@ -824,12 +816,12 @@ AP_GPS_Backend *AP_GPS::_detect_instance(const uint8_t instance)
     return nullptr;
 }
 
-AP_GPS::GPS_Status AP_GPS::highest_supported_status(uint8_t instance) const
+AP_GPS_FixType AP_GPS::highest_supported_status(uint8_t instance) const
 {
     if (instance < GPS_MAX_RECEIVERS && drivers[instance] != nullptr) {
         return drivers[instance]->highest_supported_status();
     }
-    return AP_GPS::GPS_OK_FIX_3D;
+    return AP_GPS_FixType::FIX_3D;
 }
 
 #if HAL_LOGGING_ENABLED
@@ -851,6 +843,30 @@ bool AP_GPS::should_log() const
 
 
 /*
+  keep count of delayed frames and average frame delay for health
+  reporting. Must only be called when timing[instance].delta_time_ms is a
+  real measurement of the gap between two messages
+ */
+void AP_GPS::update_frame_timing_health(uint8_t instance)
+{
+    const uint16_t gps_max_delta_ms = 245; // 200 ms (5Hz) + 45 ms buffer
+    GPS_timing &t = timing[instance];
+
+    if (t.delta_time_ms > gps_max_delta_ms) {
+        t.delayed_count++;
+    } else {
+        t.delayed_count = 0;
+    }
+    if (t.delta_time_ms < 2000) {
+        if (t.average_delta_ms <= 0) {
+            t.average_delta_ms = t.delta_time_ms;
+        } else {
+            t.average_delta_ms = 0.98f * t.average_delta_ms + 0.02f * t.delta_time_ms;
+        }
+    }
+}
+
+/*
   update one GPS instance. This should be called at 10Hz or greater
  */
 void AP_GPS::update_instance(uint8_t instance)
@@ -862,7 +878,7 @@ void AP_GPS::update_instance(uint8_t instance)
     }
     if (type == GPS_TYPE_NONE) {
         // not enabled
-        state[instance].status = NO_GPS;
+        state[instance].status = AP_GPS_FixType::NO_GPS;
         state[instance].hdop = GPS_UNKNOWN_DOP;
         state[instance].vdop = GPS_UNKNOWN_DOP;
         return;
@@ -890,7 +906,7 @@ void AP_GPS::update_instance(uint8_t instance)
     // if we did not get a message, and the idle timer of 2 seconds
     // has expired, re-initialise the GPS. This will cause GPS
     // detection to run again
-    bool data_should_be_logged = false;
+    bool new_data_or_timeout = false;
     if (!result) {
         if (tnow - timing[instance].last_message_time_ms > GPS_TIMEOUT_MS) {
             memset((void *)&state[instance], 0, sizeof(state[instance]));
@@ -899,22 +915,23 @@ void AP_GPS::update_instance(uint8_t instance)
             state[instance].vdop = GPS_UNKNOWN_DOP;
             timing[instance].last_message_time_ms = tnow;
             timing[instance].delta_time_ms = GPS_TIMEOUT_MS;
+            update_frame_timing_health(instance);
             // do not try to detect again if type is MAV or UAVCAN
             if (type == GPS_TYPE_MAV ||
                 type == GPS_TYPE_UAVCAN ||
                 type == GPS_TYPE_UAVCAN_RTK_BASE ||
                 type == GPS_TYPE_UAVCAN_RTK_ROVER) {
-                state[instance].status = NO_FIX;
+                state[instance].status = AP_GPS_FixType::NONE;
             } else {
                 // free the driver before we run the next detection, so we
                 // don't end up with two allocated at any time
                 delete drivers[instance];
                 drivers[instance] = nullptr;
-                state[instance].status = NO_GPS;
+                state[instance].status = AP_GPS_FixType::NO_GPS;
             }
             // log this data as a "flag" that the GPS is no longer
             // valid (see PR#8144)
-            data_should_be_logged = true;
+            new_data_or_timeout = true;
         }
     } else {
         if (state[instance].corrected_timestamp_updated) {
@@ -931,15 +948,26 @@ void AP_GPS::update_instance(uint8_t instance)
             GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d: detected %s", instance + 1, drivers[instance]->name());
         }
 
-        // delta will only be correct after parsing two messages
-        timing[instance].delta_time_ms = tnow - timing[instance].last_message_time_ms;
+        // delta will only be correct after parsing two messages.
+        //
+        const int32_t delta_ms = int32_t(tnow - timing[instance].last_message_time_ms);
         timing[instance].last_message_time_ms = tnow;
+        if (delta_ms < 0) {
+            // time went backwards, so we have no measurement of how long
+            // this message took to arrive. Leave the health counters
+            // alone rather than either counting a delayed frame or
+            // resetting delayed_count and masking a real stall
+            timing[instance].delta_time_ms = 0;
+        } else {
+            timing[instance].delta_time_ms = MIN(delta_ms, UINT16_MAX);
+            update_frame_timing_health(instance);
+        }
         // if GPS disabled for flight testing then don't update fix timing value
-        if (state[instance].status >= GPS_OK_FIX_2D && !_force_disable_gps) {
+        if (state[instance].status >= AP_GPS_FixType::FIX_2D && !_force_disable_gps) {
             timing[instance].last_fix_time_ms = tnow;
         }
 
-        data_should_be_logged = true;
+        new_data_or_timeout = true;
     }
 
 #if GPS_MAX_RECEIVERS > 1
@@ -961,35 +989,16 @@ void AP_GPS::update_instance(uint8_t instance)
     }
 #endif
 
-    if (data_should_be_logged) {
-        // keep count of delayed frames and average frame delay for health reporting
-        const uint16_t gps_max_delta_ms = 245; // 200 ms (5Hz) + 45 ms buffer
-        GPS_timing &t = timing[instance];
-
-        if (t.delta_time_ms > gps_max_delta_ms) {
-            t.delayed_count++;
-        } else {
-            t.delayed_count = 0;
-        }
-        if (t.delta_time_ms < 2000) {
-            if (t.average_delta_ms <= 0) {
-                t.average_delta_ms = t.delta_time_ms;
-            } else {
-                t.average_delta_ms = 0.98f * t.average_delta_ms + 0.02f * t.delta_time_ms;
-            }
-        }
-    }
-
 #if HAL_LOGGING_ENABLED
-    if (data_should_be_logged && should_log()) {
+    if (new_data_or_timeout && should_log()) {
         Write_GPS(instance);
     }
 #else
-    (void)data_should_be_logged;
+    (void)new_data_or_timeout;
 #endif
 
 #if AP_RTC_ENABLED
-    if (state[instance].status >= GPS_OK_FIX_3D) {
+    if (state[instance].status >= AP_GPS_FixType::FIX_3D) {
         const uint64_t now = time_epoch_usec(instance);
         if (now != 0) {
             AP::rtc().set_utc_usec(now, AP_RTC::SOURCE_GPS);
@@ -1078,7 +1087,7 @@ void AP_GPS::update(void)
     if (primary_instance != old_primary) {
         AP::logger().Write_Event(LogEvent::GPS_PRIMARY_CHANGED);
     }
-#endif  // HAL_LOGING_ENABLED
+#endif  // HAL_LOGGING_ENABLED
 #endif  // GPS_MAX_RECEIVERS > 1
 
 #ifndef HAL_BUILD_AP_PERIPH
@@ -1146,7 +1155,7 @@ void AP_GPS::update_primary(void)
     for (uint8_t i=0; i<GPS_MAX_RECEIVERS; i++) {
         if (is_rtk_base(i) &&
             is_rtk_rover(i^1) &&
-            ((state[i].status >= GPS_OK_FIX_3D) || (state[i].status >= state[i^1].status))) {
+            ((state[i].status >= AP_GPS_FixType::FIX_3D) || (state[i].status >= state[i^1].status))) {
             if (primary_instance != i) {
                 _last_instance_swap_ms = now;
                 primary_instance = i;
@@ -1176,7 +1185,7 @@ void AP_GPS::update_primary(void)
                 // don't switch to a GPS that has not updated in 400ms
                 continue;
             }
-            if (state[i].status < GPS_OK_FIX_3D) {
+            if (state[i].status < AP_GPS_FixType::FIX_3D) {
                 // don't use a GPS without 3D fix
                 continue;
             }
@@ -1195,7 +1204,7 @@ void AP_GPS::update_primary(void)
 #endif  // AP_GPS_BLENDED_ENABLED
 
     // Use primary if 3D fix or better
-    if (((GPSAutoSwitch)_auto_switch.get() == GPSAutoSwitch::USE_PRIMARY_IF_3D_FIX) && (state[primary_param].status >= GPS_OK_FIX_3D)) {
+    if (((GPSAutoSwitch)_auto_switch.get() == GPSAutoSwitch::USE_PRIMARY_IF_3D_FIX) && (state[primary_param].status >= AP_GPS_FixType::FIX_3D)) {
         // Primary GPS has a least a 3D fix, switch to it if necessary
         if (primary_instance != primary_param) {
             primary_instance = primary_param;
@@ -1304,6 +1313,11 @@ bool AP_GPS::get_first_external_instance(uint8_t& instance) const
 void AP_GPS::handle_external(const AP_ExternalAHRS::gps_data_message_t &pkt, const uint8_t instance)
 {
     if (get_type(instance) == GPS_TYPE_EXTERNAL_AHRS && drivers[instance] != nullptr) {
+#if CONFIG_HAL_BOARD == HAL_BOARD_SITL
+    if (pkt.longitude == 0 && pkt.latitude == 0) {
+        AP_HAL::panic("Invalid location passed to AP_GPS::handle_external");
+    }
+#endif
         drivers[instance]->handle_external(pkt);
     }
 }
@@ -1397,7 +1411,7 @@ void AP_GPS::send_mavlink_gps_raw(mavlink_channel_t chan)
     mavlink_msg_gps_raw_int_send(
         chan,
         last_fix_time_ms(0)*(uint64_t)1000,
-        status(0),
+        (uint8_t)status(0),
         loc.lat,        // in 1E7 degrees
         loc.lng,        // in 1E7 degrees
         loc.alt * 10UL, // in mm
@@ -1438,7 +1452,7 @@ void AP_GPS::send_mavlink_gps2_raw(mavlink_channel_t chan)
     mavlink_msg_gps2_raw_send(
         chan,
         last_fix_time_ms(1)*(uint64_t)1000,
-        status(1),
+        (uint8_t)status(1),
         loc.lat,
         loc.lng,
         loc.alt * 10UL,
@@ -1695,7 +1709,7 @@ bool AP_GPS::parse_rtcm_injection(mavlink_channel_t chan, const mavlink_gps_rtcm
 void AP_GPS::Write_AP_Logger_Log_Startup_messages()
 {
     for (uint8_t instance=0; instance<num_instances; instance++) {
-        if (drivers[instance] == nullptr || state[instance].status == NO_GPS) {
+        if (drivers[instance] == nullptr || state[instance].status == AP_GPS_FixType::NO_GPS) {
             continue;
         }
         drivers[instance]->Write_AP_Logger_Log_Startup_messages();
@@ -1728,7 +1742,7 @@ bool AP_GPS::get_lag(uint8_t instance, float &lag_sec) const
         lag_sec = 0.001f * (float)params[instance].delay_ms;
         // the user is always right !!
         return true;
-    } else if (drivers[instance] == nullptr || state[instance].status == NO_GPS) {
+    } else if (drivers[instance] == nullptr || state[instance].status == AP_GPS_FixType::NO_GPS) {
         // no GPS was detected in this instance so return the worst possible lag term
         const auto type = params[instance].type;
         if (type == GPS_TYPE_NONE) {
@@ -1982,16 +1996,27 @@ bool AP_GPS::is_rtk_rover(uint8_t instance) const
 }
 
 /*
+  return the instance whose moving baseline rover solution provides the yaw
+  reported for this instance by gps_yaw_deg
+ */
+uint8_t AP_GPS::yaw_source_instance(uint8_t instance) const
+{
+#if GPS_MAX_RECEIVERS > 1
+    if (is_rtk_base(instance) && is_rtk_rover(instance^1)) {
+        // the yaw for a base is provided by its paired rover
+        instance ^= 1;
+    }
+#endif
+    return instance;
+}
+
+/*
   get GPS based yaw
  */
 bool AP_GPS::gps_yaw_deg(uint8_t instance, float &yaw_deg, float &accuracy_deg, uint32_t &time_ms) const
 {
-#if GPS_MAX_RECEIVERS > 1
-    if (is_rtk_base(instance) && is_rtk_rover(instance^1)) {
-        // return the yaw from the rover
-        instance ^= 1;
-    }
-#endif
+    // the yaw for a base is reported from its paired rover
+    instance = yaw_source_instance(instance);
     if (!have_gps_yaw(instance)) {
         return false;
     }
@@ -2013,6 +2038,23 @@ bool AP_GPS::gps_yaw_deg(uint8_t instance, float &yaw_deg, float &accuracy_deg, 
     }
     return true;
 }
+
+#if AP_GPS_MB_YAW_OFFSET_ENABLED
+/*
+  get the body-frame moving baseline antenna offset used to calculate the yaw
+  returned by gps_yaw_deg, zero when that yaw is not derived from a moving
+  baseline. The yaw is calculated assuming the offset is horizontal, so
+  consumers with an attitude estimate can use this offset to correct the yaw
+  for vehicle roll and pitch
+ */
+const Vector3f &AP_GPS::get_mb_yaw_offset(uint8_t instance) const
+{
+    // resolve the same instance whose yaw gps_yaw_deg reports, so the offset
+    // always describes the yaw it accompanies
+    const uint8_t yaw_instance = yaw_source_instance(instance);
+    return state[yaw_instance].mb_yaw_offset;
+}
+#endif  // AP_GPS_MB_YAW_OFFSET_ENABLED
 
 /*
  * Old parameter metadata.  Until we have versioned parameters, keeping

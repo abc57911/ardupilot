@@ -15,6 +15,7 @@ const AP_Param::GroupInfo AP_RangeFinder_Params::var_info[] = {
     // @DisplayName: Rangefinder type
     // @Description: Type of connected rangefinder
     // @SortValues: AlphabeticalZeroAtTop
+    // @RebootRequired: True
     // @Values: 0:None
     // @Values: 1:Analog
     // @Values: 2:MaxbotixI2C
@@ -61,7 +62,8 @@ const AP_Param::GroupInfo AP_RangeFinder_Params::var_info[] = {
     // @Values: 44:HexsoonRadar
     // @Values: 45:LightWare-GRF
     // @Values: 46:BenewakeTFS20L
-    // @Values: 47:DTS6012M
+    // @Values: 47:DTS6012M-Serial
+    // @Values: 48:LightWare-GRF-I2C
     // @Values: 100:SITL
     // @User: Standard
     AP_GROUPINFO_FLAGS("TYPE", 1, AP_RangeFinder_Params, type, 0, AP_PARAM_FLAG_ENABLE),
@@ -149,7 +151,7 @@ const AP_Param::GroupInfo AP_RangeFinder_Params::var_info[] = {
 
     // @Param: ADDR
     // @DisplayName: Bus address of sensor
-    // @Description: This sets the bus address of the sensor, where applicable. Used for the I2C and DroneCAN sensors to allow for multiple sensors on different addresses.
+    // @Description: This sets the bus address of the sensor, where applicable. Used for the I2C and DroneCAN sensors to allow for multiple sensors on different addresses. For MAVLink rangefinders, this sets the DISTANCE_SENSOR message id to accept. A value of zero accepts any id.
     // @Range: 0 127
     // @Increment: 1
     // @User: Standard

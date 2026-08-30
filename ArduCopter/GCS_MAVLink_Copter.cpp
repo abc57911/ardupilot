@@ -106,37 +106,9 @@ void GCS_MAVLINK_Copter::send_attitude_target()
         thrust);                // Collective thrust, normalized to 0 .. 1
 }
 
-void GCS_MAVLINK_Copter::send_position_target_global_int()
+bool GCS_MAVLINK_Copter::get_target_location(Location &target) const
 {
-    Location target;
-    if (!copter.flightmode->get_wp(target)) {
-        return;
-    }
-
-    // convert altitude frame to AMSL (this may use the terrain database)
-    if (!target.change_alt_frame(Location::AltFrame::ABSOLUTE)) {
-        return;
-    }
-    static constexpr uint16_t POSITION_TARGET_TYPEMASK_LAST_BYTE = 0xF000;
-    static constexpr uint16_t TYPE_MASK = POSITION_TARGET_TYPEMASK_VX_IGNORE | POSITION_TARGET_TYPEMASK_VY_IGNORE | POSITION_TARGET_TYPEMASK_VZ_IGNORE |
-                                          POSITION_TARGET_TYPEMASK_AX_IGNORE | POSITION_TARGET_TYPEMASK_AY_IGNORE | POSITION_TARGET_TYPEMASK_AZ_IGNORE |
-                                          POSITION_TARGET_TYPEMASK_YAW_IGNORE | POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE | POSITION_TARGET_TYPEMASK_LAST_BYTE;
-    mavlink_msg_position_target_global_int_send(
-        chan,
-        AP_HAL::millis(), // time_boot_ms
-        MAV_FRAME_GLOBAL, // targets are always global altitude
-        TYPE_MASK, // ignore everything except the x/y/z components
-        target.lat, // latitude as 1e7
-        target.lng, // longitude as 1e7
-        target.alt * 0.01f, // altitude is sent as a float
-        0.0f, // vx
-        0.0f, // vy
-        0.0f, // vz
-        0.0f, // afx
-        0.0f, // afy
-        0.0f, // afz
-        0.0f, // yaw
-        0.0f); // yaw_rate
+    return copter.flightmode->get_wp(target);
 }
 
 void GCS_MAVLINK_Copter::send_position_target_local_ned()
@@ -352,6 +324,7 @@ bool GCS_MAVLINK_Copter::try_send_message(enum ap_message id)
 }
 
 
+#if MODE_AUTO_ENABLED
 MISSION_STATE GCS_MAVLINK_Copter::mission_state(const class AP_Mission &mission) const
 {
     if (copter.mode_auto.paused()) {
@@ -359,6 +332,7 @@ MISSION_STATE GCS_MAVLINK_Copter::mission_state(const class AP_Mission &mission)
     }
     return GCS_MAVLINK::mission_state(mission);
 }
+#endif  // MODE_AUTO_ENABLED
 
 bool GCS_MAVLINK_Copter::handle_guided_request(AP_Mission::Mission_Command &cmd)
 {
@@ -459,11 +433,6 @@ MAV_RESULT GCS_MAVLINK_Copter::handle_command_int_do_reposition(const mavlink_co
 #if MODE_GUIDED_ENABLED
     const bool change_modes = ((int32_t)packet.param2 & MAV_DO_REPOSITION_FLAGS_CHANGE_MODE) == MAV_DO_REPOSITION_FLAGS_CHANGE_MODE;
     if (!copter.flightmode->in_guided_mode() && !change_modes) {
-        return MAV_RESULT_DENIED;
-    }
-
-    // sanity check location
-    if (!check_latlng(packet.x, packet.y)) {
         return MAV_RESULT_DENIED;
     }
 
@@ -622,7 +591,8 @@ MAV_RESULT GCS_MAVLINK_Copter::handle_MAV_CMD_NAV_TAKEOFF(const mavlink_command_
 
         float takeoff_alt_m = packet.z;
 
-        if (!copter.flightmode->do_user_takeoff_U_m(takeoff_alt_m, is_zero(packet.param3))) {
+        const bool must_navigate = ((uint32_t(packet.param3) & NAV_TAKEOFF_FLAGS_HORIZONTAL_POSITION_NOT_REQUIRED) == 0);
+        if (!copter.flightmode->do_user_takeoff_U_m(takeoff_alt_m, must_navigate)) {
             return MAV_RESULT_FAILED;
         }
         return MAV_RESULT_ACCEPTED;
@@ -1035,7 +1005,7 @@ void GCS_MAVLINK_Copter::handle_message_set_position_target_local_ned(const mavl
     if (!pos_ignore) {
         // convert to m
         pos_ned_m = Vector3p{packet.x, packet.y, packet.z};
-        // rotate to body-frame if necessary
+        // rotate to earth-frame if necessary
         if (packet.coordinate_frame == MAV_FRAME_BODY_NED ||
             packet.coordinate_frame == MAV_FRAME_BODY_OFFSET_NED) {
             pos_ned_m.xy() = copter.ahrs.body_to_earth2D_p(pos_ned_m.xy());
@@ -1063,7 +1033,7 @@ void GCS_MAVLINK_Copter::handle_message_set_position_target_local_ned(const mavl
             copter.mode_guided.hold_position();
             return;
         }
-        // rotate to body-frame if necessary
+        // rotate to earth-frame if necessary
         if (packet.coordinate_frame == MAV_FRAME_BODY_NED || packet.coordinate_frame == MAV_FRAME_BODY_OFFSET_NED) {
             vel_ned_ms.xy() = copter.ahrs.body_to_earth2D(vel_ned_ms.xy());
         }
@@ -1073,7 +1043,7 @@ void GCS_MAVLINK_Copter::handle_message_set_position_target_local_ned(const mavl
     Vector3f accel_ned_mss;
     if (!acc_ignore) {
         accel_ned_mss = Vector3f{packet.afx, packet.afy, packet.afz};
-        // rotate to body-frame if necessary
+        // rotate to earth-frame if necessary
         if (packet.coordinate_frame == MAV_FRAME_BODY_NED || packet.coordinate_frame == MAV_FRAME_BODY_OFFSET_NED) {
             accel_ned_mss.xy() = copter.ahrs.body_to_earth2D(accel_ned_mss.xy());
         }
@@ -1294,7 +1264,10 @@ void GCS_MAVLINK_Copter::send_wind() const
         // valid wind estimate on copters
         return;
     }
-    const Vector3f wind = AP::ahrs().wind_estimate();
+    Vector3f wind;
+    // send the estimate even if it is not marked valid, to preserve
+    // existing behaviour
+    IGNORE_RETURN(AP::ahrs().get_wind(wind));
     mavlink_msg_wind_send(
         chan,
         degrees(atan2f(-wind.y, -wind.x)),
@@ -1328,12 +1301,11 @@ uint8_t GCS_MAVLINK_Copter::high_latency_tgt_heading() const
     return 0;     
 }
     
-uint16_t GCS_MAVLINK_Copter::high_latency_tgt_dist() const
+uint16_t GCS_MAVLINK_Copter::high_latency_tgt_dist_dam() const
 {
     if (copter.ap.initialised) {
-        // return units are dm
         const Mode *flightmode = copter.flightmode;
-        return MIN(flightmode->wp_distance_m(), UINT16_MAX) / 10;
+        return MIN(static_cast<uint16_t>(flightmode->wp_distance_m() * 0.1), UINT16_MAX);
     }
     return 0;
 }
@@ -1353,7 +1325,9 @@ uint8_t GCS_MAVLINK_Copter::high_latency_wind_speed() const
     Vector3f wind;
     // return units are m/s*5
     if (AP::ahrs().airspeed_vector_TAS(airspeed_vec_bf)) {
-        wind = AP::ahrs().wind_estimate();
+        // use the estimate even if it is not marked valid, to preserve
+        // existing behaviour
+        IGNORE_RETURN(AP::ahrs().get_wind(wind));
         return wind.xy().length() * 5;
     }
     return 0; 
@@ -1365,7 +1339,9 @@ uint8_t GCS_MAVLINK_Copter::high_latency_wind_direction() const
     Vector3f wind;
     // return units are deg/2
     if (AP::ahrs().airspeed_vector_TAS(airspeed_vec_bf)) {
-        wind = AP::ahrs().wind_estimate();
+        // use the estimate even if it is not marked valid, to preserve
+        // existing behaviour
+        IGNORE_RETURN(AP::ahrs().get_wind(wind));
         // need to convert -180->180 to 0->360/2
         return wrap_360(degrees(atan2f(-wind.y, -wind.x))) / 2;
     }
@@ -1386,7 +1362,9 @@ uint8_t GCS_MAVLINK_Copter::send_available_mode(uint8_t index) const
         &copter.mode_acro,
 #endif
         &copter.mode_stabilize,
+#if MODE_ALTHOLD_ENABLED
         &copter.mode_althold,
+#endif
 #if MODE_CIRCLE_ENABLED
         &copter.mode_circle,
 #endif
